@@ -1,0 +1,8 @@
+{
+  "name": "Remix  DIWALI 3D",
+  "description": "An immersive 3D Festival of Lights celebration with interactive 3D diyas, rangoli studio, Ramayana storytelling, cinematic Ravana Dahan, and personalized festive e-cards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

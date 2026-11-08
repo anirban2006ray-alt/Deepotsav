@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Diwali Lighting Animation & Multilingual Symphony</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      overflow: hidden;
+      background: radial-gradient(circle at center, #1a0933 0%, #05010a 100%);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #fff;
+    }
+    canvas { display: block; }
+
+    /* Overlay HUD */
+    #hud {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px;
+      z-index: 10;
+    }
+
+    .greeting-box {
+      text-align: center;
+      margin-top: 10px;
+      text-shadow: 0 0 18px #ff9900, 0 0 36px #ff3300;
+    }
+    #multi-lang-title {
+      font-size: clamp(2rem, 5vw, 3.8rem);
+      font-weight: 800;
+      letter-spacing: 2px;
+      background: linear-gradient(90deg, #fff3b0, #ffb703, #fb8500, #fff3b0);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shine 3s linear infinite;
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+    #lang-label {
+      font-size: 0.95rem;
+      color: #ffd166;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      opacity: 0.85;
+      margin-top: 4px;
+    }
+
+    /* Synced Lyrics Banner */
+    #lyrics-container {
+      text-align: center;
+      margin-bottom: 12px;
+      padding: 14px 28px;
+      background: rgba(20, 6, 40, 0.65);
+      border: 1px solid rgba(255, 183, 3, 0.45);
+      border-radius: 50px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 0 25px rgba(255, 140, 0, 0.35);
+    }
+    #lyric-hi {
+      font-size: clamp(1.2rem, 2.8vw, 1.9rem);
+      font-weight: 700;
+      color: #ffe066;
+      text-shadow: 0 0 12px #ff6d00;
+    }
+    #lyric-en {
+      font-size: clamp(0.95rem, 2vw, 1.2rem);
+      color: #ffd6a5;
+      margin-top: 4px;
+    }
+
+    /* Controls */
+    #controls {
+      pointer-events: auto;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      background: rgba(15, 5, 29, 0.8);
+      padding: 10px 18px;
+      border-radius: 30px;
+      border: 1px solid rgba(255, 195, 0, 0.4);
+    }
+    .btn {
+      background: linear-gradient(135deg, #ff9e00, #ff0055);
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+      box-shadow: 0 0 12px rgba(255, 158, 0, 0.5);
+      transition: filter 0.2s;
+    }
+    .btn:hover { filter: brightness(1.15); }
+    input[type="file"] { display: none; }
+
+    @keyframes shine {
+      to { background-position: 200% center; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="hud">
+    <div class="greeting-box">
+      <div id="multi-lang-title">शुभ दीपावली</div>
+      <div id="lang-label">Hindi • हिन्दी</div>
+    </div>
+
+    <div>
+      <div id="lyrics-container">
+        <div id="lyric-hi">मेरे तुम्हारे सबके लिए, हैप्पी दिवाली! ✨</div>
+        <div id="lyric-en">Mere tumhare sabke liye, Happy Diwali!</div>
+      </div>
+
+      <div id="controls">
+        <label class="btn" for="audio-upload">🎵 Load Audio</label>
+        <input id="audio-upload" type="file" accept="audio/*,video/*" />
+        <button class="btn" id="play-btn">▶ Play / Sync Demo</button>
+        <button class="btn" id="burst-btn">🎆 Launch Firework</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- Custom GLSL Shaders for 3D Diya Flame -->
+  <script id="flameVertexShader" type="x-shader/x-vertex">
+    uniform float uTime;
+    uniform float uBeat;
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      vec3 pos = position;
+      float flicker = sin(uTime * 12.0 + pos.y * 4.0) * 0.08 * pos.y;
+      pos.x += flicker;
+      pos.y *= (1.0 + uBeat * 0.35);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    }
+  </script>
+
+  <script id="flameFragmentShader" type="x-shader/x-fragment">
+    uniform float uTime;
+    varying vec2 vUv;
+    void main() {
+      vec3 innerColor = vec3(1.0, 0.98, 0.75);
+      vec3 midColor   = vec3(1.0, 0.55, 0.05);
+      vec3 outerColor = vec3(0.95, 0.1, 0.0);
+      float grad = smoothstep(0.0, 1.0, vUv.y);
+      vec3 col = mix(innerColor, midColor, grad);
+      col = mix(col, outerColor, pow(grad, 2.0));
+      float alpha = (1.0 - pow(vUv.y, 1.6)) * 0.95;
+      gl_FragColor = vec4(col, alpha);
+    }
+  </script>
+
+  <script>
+    // 1. MULTILINGUAL GREETINGS (10 Languages)
+    const greetings = [
+      { text: "शुभ दीपावली", lang: "Hindi • हिन्दी" },
+      { text: "Happy Diwali", lang: "English" },
+      { text: "শুভ দীপাবলি", lang: "Bengali • বাংলা" },
+      { text: "இனிய தீபாவளி நல்வாழ்த்துக்கள்", lang: "Tamil • தமிழ்" },
+      { text: "దీపావళి శుభాకాంక్షలు", lang: "Telugu • తెలుగు" },
+      { text: "दिवाळीच्या हार्दिक शुभेच्छा", lang: "Marathi • मराठी" },
+      { text: "દિવાળીની હાર્દિક શુભકામના", lang: "Gujarati • ગુજરાતી" },
+      { text: "ਦੀਵਾਲੀ ਦੀਆਂ ਮੁਬਾਰਕਾਂ", lang: "Punjabi • ਪੰਜਾਬੀ" },
+      { text: "ദീപാവലി ആശംസകൾ", lang: "Malayalam • മലയാളം" },
+      { text: "दीपावल्याः शुभाशयाः", lang: "Sanskrit • संस्कृतम्" }
+    ];
+
+    let greetIdx = 0;
+    const titleEl = document.getElementById("multi-lang-title");
+    const langEl  = document.getElementById("lang-label");
+
+    setInterval(() => {
+      greetIdx = (greetIdx + 1) % greetings.length;
+      titleEl.style.opacity = 0;
+      setTimeout(() => {
+        titleEl.textContent = greetings[greetIdx].text;
+        langEl.textContent  = greetings[greetIdx].lang;
+        titleEl.style.opacity = 1;
+      }, 300);
+    }, 2400);
+
+    // 2. TIME-SYNCED LYRICS MATCHING AUDIO (00:00 - 00:19)
+    const lyricTimeline = [
+      {
+        start: 0.0, end: 6.5,
+        hi: "मेरे तुम्हारे सबके लिए, हैप्पी दिवाली! 🪔",
+        en: "Mere tumhare sabke liye, Happy Diwali!"
+      },
+      {
+        start: 6.5, end: 12.5,
+        hi: "सारे सितारे उसके लिए, हैप्पी दिवाली! 🌟",
+        en: "Saare sitaare uske liye, Happy Diwali!"
+      },
+      {
+        start: 12.5, end: 20.0,
+        hi: "मेरे तुम्हारे सबके लिए, हैप्पी दिवाली! 🎆",
+        en: "Mere tumhare sabke liye, Happy Diwali!"
+      }
+    ];
+
+    const lyricHiEl = document.getElementById("lyric-hi");
+    const lyricEnEl = document.getElementById("lyric-en");
+
+    function updateLyrics(timeSec) {
+      const t = timeSec % 19.5;
+      const current = lyricTimeline.find(l => t >= l.start && t < l.end) || lyricTimeline[0];
+      if (lyricHiEl.textContent !== current.hi) {
+        lyricHiEl.textContent = current.hi;
+        lyricEnEl.textContent = current.en;
+      }
+    }
+
+    // 3. THREE.JS 3D SCENE SETUP
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x0b021a, 0.018);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+    camera.position.set(0, 6.5, 16);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x4a1c6d, 0.8);
+    scene.add(ambientLight);
+
+    const flamePointLight = new THREE.PointLight(0xff9900, 3.5, 35);
+    flamePointLight.position.set(0, 2.6, 0);
+    scene.add(flamePointLight);
+
+    // 4. CREATE 3D DIYA (OIL LAMP) + GLSL SHADER FLAME
+    const flameUniforms = {
+      uTime: { value: 0 },
+      uBeat: { value: 0 }
+    };
+
+    const flameMaterial = new THREE.ShaderMaterial({
+      vertexShader: document.getElementById("flameVertexShader").textContent,
+      fragmentShader: document.getElementById("flameFragmentShader").textContent,
+      uniforms: flameUniforms,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    function createDiya(scale = 1) {
+      const group = new THREE.Group();
+
+      const points = [];
+      for (let i = 0; i <= 10; i++) {
+        const x = Math.sin(i * 0.15) * 1.6;
+        const y = (i - 5) * 0.14;
+        points.push(new THREE.Vector2(x, y));
+      }
+      const bowlGeo = new THREE.LatheGeometry(points, 32);
+      const bowlMat = new THREE.MeshStandardMaterial({
+        color: 0xb5451b,
+        roughness: 0.45,
+        metalness: 0.25,
+        emissive: 0x3a0ca3,
+        emissiveIntensity: 0.15
+      });
+      const bowl = new THREE.Mesh(bowlGeo, bowlMat);
+      group.add(bowl);
+
+      const rimGeo = new THREE.TorusGeometry(1.52, 0.08, 16, 48);
+      rimGeo.rotateX(Math.PI / 2);
+      const rimMat = new THREE.MeshStandardMaterial({
+        color: 0xffd700,
+        metalness: 0.9,
+        roughness: 0.2,
+        emissive: 0xff8800,
+        emissiveIntensity: 0.3
+      });
+      const rim = new THREE.Mesh(rimGeo, rimMat);
+      rim.position.y = 0.68;
+      group.add(rim);
+
+      const flameGeo = new THREE.ConeGeometry(0.38, 1.45, 24, 16);
+      flameGeo.translate(0, 0.72, 0);
+      const flame = new THREE.Mesh(flameGeo, flameMaterial);
+      flame.position.set(0, 0.55, 0);
+      group.add(flame);
+
+      group.scale.setScalar(scale);
+      return group;
+    }
+
+    // Central Grand Diya
+    const mainDiya = createDiya(1.4);
+    scene.add(mainDiya);
+
+    // Rotating Ring of 12 Surrounding Diyas
+    const diyaRing = new THREE.Group();
+    const ringCount = 12;
+    for (let i = 0; i < ringCount; i++) {
+      const angle = (i / ringCount) * Math.PI * 2;
+      const smallDiya = createDiya(0.55);
+      smallDiya.position.set(Math.cos(angle) * 6.5, -0.5, Math.sin(angle) * 6.5);
+      smallDiya.lookAt(0, -0.5, 0);
+      diyaRing.add(smallDiya);
+    }
+    scene.add(diyaRing);
+
+    // Glowing Rangoli Rings
+    const rangoliGroup = new THREE.Group();
+    [3.2, 5.0, 6.8, 8.5].forEach((radius, idx) => {
+      const geo = new THREE.TorusGeometry(radius, 0.04, 12, 80);
+      geo.rotateX(Math.PI / 2);
+      const mat = new THREE.MeshBasicMaterial({
+        color: idx % 2 === 0 ? 0xffbe0b : 0xff006e
+      });
+      const torus = new THREE.Mesh(geo, mat);
+      torus.position.y = -1.2;
+      rangoliGroup.add(torus);
+    });
+    scene.add(rangoliGroup);
+
+    // 5. FLOATING 3D SKY LANTERNS
+    const lanterns = [];
+    const lanternGeo = new THREE.CylinderGeometry(0.35, 0.25, 0.9, 12);
+    for (let i = 0; i < 45; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color().setHSL(0.06 + Math.random() * 0.08, 1.0, 0.6)
+      });
+      const mesh = new THREE.Mesh(lanternGeo, mat);
+      mesh.position.set(
+        (Math.random() - 0.5) * 45,
+        Math.random() * 25 - 4,
+        (Math.random() - 0.5) * 35 - 8
+      );
+      mesh.userData = { speed: 0.015 + Math.random() * 0.025, sway: Math.random() * 6.28 };
+      scene.add(mesh);
+      lanterns.push(mesh);
+    }
+
+    // 6. 3D FIREWORKS PARTICLE SYSTEM
+    const fireworks = [];
+    function launchFirework() {
+      const count = 140;
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(count * 3);
+      const velocities = [];
+      const origin = new THREE.Vector3(
+        (Math.random() - 0.5) * 22,
+        5 + Math.random() * 9,
+        -4 - Math.random() * 12
+      );
+
+      for (let i = 0; i < count; i++) {
+        positions[i * 3]     = origin.x;
+        positions[i * 3 + 1] = origin.y;
+        positions[i * 3 + 2] = origin.z;
+
+        const theta = Math.random() * Math.PI * 2;
+        const phi   = Math.acos(2 * Math.random() - 1);
+        const speed = 0.08 + Math.random() * 0.18;
+        velocities.push(new THREE.Vector3(
+          Math.sin(phi) * Math.cos(theta) * speed,
+          Math.sin(phi) * Math.sin(theta) * speed,
+          Math.cos(phi) * speed
+        ));
+      }
+
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      const material = new THREE.PointsMaterial({
+        size: 0.28,
+        color: new THREE.Color().setHSL(Math.random(), 1.0, 0.65),
+        transparent: true,
+        opacity: 1,
+        blending: THREE.AdditiveBlending
+      });
+
+      const points = new THREE.Points(geometry, material);
+      scene.add(points);
+      fireworks.push({ points, velocities, life: 1.0 });
+    }
+
+    document.getElementById("burst-btn").addEventListener("click", launchFirework);
+
+    // 7. AUDIO ANALYSER + DEFAULT DEMO
+    let audioCtx, analyser, dataArray, audioEl;
+    let isPlaying = false;
+    let demoStartTime = performance.now();
+
+    function initAudio(fileUrl) {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 128;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+      }
+      if (audioEl) audioEl.pause();
+      audioEl = new Audio(fileUrl);
+      audioEl.loop = true;
+      const source = audioCtx.createMediaElementSource(audioEl);
+      source.connect(analyser);
+      analyser.connect(audioCtx.destination);
+      audioEl.play().catch(e => console.log('Audio playback waiting for gesture'));
+      isPlaying = true;
+    }
+
+    document.getElementById("audio-upload").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        initAudio(URL.createObjectURL(file));
+      }
+    });
+
+    document.getElementById("play-btn").addEventListener("click", () => {
+      if (!audioEl) {
+        initAudio('/assets/aistudio/audio_242fa111.m4a');
+      } else {
+        if (audioEl.paused) { audioEl.play(); isPlaying = true; }
+        else { audioEl.pause(); isPlaying = false; }
+      }
+      launchFirework();
+    });
+
+    // 8. ANIMATION LOOP
+    const clock = new THREE.Clock();
+    let lastFireworkTime = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const elapsed = clock.getElapsedTime();
+
+      let beat = 0;
+      if (analyser && isPlaying && audioEl && !audioEl.paused) {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < 16; i++) sum += dataArray[i];
+        beat = (sum / 16) / 255;
+        updateLyrics(audioEl.currentTime);
+      } else {
+        beat = Math.pow(Math.max(0, Math.sin(elapsed * 6.5)), 4) * 0.65;
+        updateLyrics(elapsed);
+      }
+
+      flameUniforms.uTime.value = elapsed;
+      flameUniforms.uBeat.value = beat;
+      flamePointLight.intensity = 3.2 + beat * 3.0;
+      mainDiya.scale.setScalar(1.4 + beat * 0.12);
+
+      diyaRing.rotation.y = elapsed * 0.35;
+      rangoliGroup.rotation.y = -elapsed * 0.2;
+
+      lanterns.forEach(l => {
+        l.position.y += l.userData.speed * (1 + beat);
+        l.position.x += Math.sin(elapsed + l.userData.sway) * 0.01;
+        if (l.position.y > 22) l.position.y = -4;
+      });
+
+      if (elapsed - lastFireworkTime > (0.9 - beat * 0.45)) {
+        launchFirework();
+        lastFireworkTime = elapsed;
+      }
+
+      for (let i = fireworks.length - 1; i >= 0; i--) {
+        const fw = fireworks[i];
+        const pos = fw.points.geometry.attributes.position.array;
+        for (let j = 0; j < fw.velocities.length; j++) {
+          pos[j * 3]     += fw.velocities[j].x;
+          pos[j * 3 + 1] += fw.velocities[j].y;
+          pos[j * 3 + 2] += fw.velocities[j].z;
+          fw.velocities[j].y -= 0.0022;
+        }
+        fw.points.geometry.attributes.position.needsUpdate = true;
+        fw.life -= 0.016;
+        fw.points.material.opacity = Math.max(0, fw.life);
+        if (fw.life <= 0) {
+          scene.remove(fw.points);
+          fireworks.splice(i, 1);
+        }
+      }
+
+      camera.position.x = Math.sin(elapsed * 0.25) * 4.5;
+      camera.position.y = 6.0 + Math.sin(elapsed * 0.4) * 1.2;
+      camera.lookAt(0, 1.2, 0);
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>

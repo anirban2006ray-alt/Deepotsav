@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diwali Akelepan – 3D Toon Animation</title>
+<style>
+  html,body{margin:0;height:100%;background:#111;overflow:hidden;font-family:Georgia,serif}
+  canvas{display:block}
+  #cap{position:fixed;left:0;right:0;top:9%;text-align:center;color:#fff;font:800 clamp(20px,4.2vw,40px)/1.25 "Cooper Black",Georgia,serif;
+       text-shadow:0 3px 0 #0006,0 0 14px #0008;padding:0 8%;white-space:pre-line;pointer-events:none}
+  #start{position:fixed;inset:0;z-index:5;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:#1b1210ee;color:#ffd9a0}
+  #start button{font:600 1.1rem system-ui;padding:14px 30px;border:0;border-radius:999px;background:#ff9933;color:#2a1000;cursor:pointer}
+  #start button:focus-visible{outline:3px solid #fff;outline-offset:3px}
+  #cap span{display:inline-block;animation:pop .45s cubic-bezier(.2,1.6,.4,1) both}
+  @keyframes pop{from{transform:scale(.3) translateY(14px);opacity:0}to{transform:none;opacity:1}}
+  #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:4}
+  @media (prefers-reduced-motion:reduce){#cap span{animation:none}}
+</style>
+</head>
+<body>
+<audio id="aud" src="audio.m4a" loop preload="auto"></audio>
+<div id="flash"></div>
+<div id="cap" aria-live="polite"></div>
+<div id="start"><p>3D toon recreation · sound on</p><button id="go">Play with audio</button></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const aud = document.getElementById('aud'), capEl = document.getElementById('cap');
+const R = new THREE.WebGLRenderer({antialias:true});
+R.setPixelRatio(Math.min(devicePixelRatio,2)); R.setSize(innerWidth,innerHeight);
+document.body.appendChild(R.domElement);
+const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(50,innerWidth/innerHeight,.1,120);
+function fit(){ const a=innerWidth/innerHeight; cam.aspect=a; cam.fov=a<1?72:50; cam.updateProjectionMatrix(); R.setSize(innerWidth,innerHeight); }
+addEventListener('resize',fit); fit();
+
+/* ---------- toon helpers ---------- */
+const ramp = new THREE.DataTexture(new Uint8Array([110,180,255]),3,1,THREE.LuminanceFormat);
+ramp.minFilter = ramp.magFilter = THREE.NearestFilter; ramp.needsUpdate = true;
+const T = (geo,color,out=true)=>{ const m=new THREE.Mesh(geo,new THREE.MeshToonMaterial({color,gradientMap:ramp}));
+  if(out){ const o=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0x14100e,side:THREE.BackSide})); o.scale.setScalar(1.05); m.add(o);} return m; };
+const add=(p,m,x=0,y=0,z=0)=>{ m.position.set(x,y,z); p.add(m); return m; };
+const box=(w,h,d,c)=>T(new THREE.BoxGeometry(w,h,d),c), cyl=(a,b,h,c,s=20)=>T(new THREE.CylinderGeometry(a,b,h,s),c), sph=(r,c)=>T(new THREE.SphereGeometry(r,24,16),c);
+const ambient=new THREE.AmbientLight(0xffffff,.75); scene.add(ambient);
+const sun=new THREE.DirectionalLight(0xfff0dd,.9); sun.position.set(3,6,8); scene.add(sun);
+
+/* ---------- sky texture (sunset + purple clouds) ---------- */
+function skyTex(){ const c=document.createElement('canvas'); c.width=256; c.height=512; const g=c.getContext('2d');
+  const gr=g.createLinearGradient(0,0,0,512); gr.addColorStop(0,'#c76b55'); gr.addColorStop(.45,'#f0814a'); gr.addColorStop(1,'#ffc58a');
+  g.fillStyle=gr; g.fillRect(0,0,256,512); g.fillStyle='#7d5a76';
+  [[40,40,110,30],[200,150,90,24],[70,250,80,22]].forEach(([x,y,rx,ry])=>{g.beginPath();g.ellipse(x,y,rx,ry,0,0,7);g.fill();});
+  return new THREE.CanvasTexture(c); }
+const sky=skyTex();
+
+/* ---------- person factory: jointed rig (head pivot, shoulders, elbows, hair) ---------- */
+function person(o){
+  const g=new THREE.Group(), skin=0xf6c9a4;
+  const torso=add(g,cyl(.3,.27,.75,o.top),0,.98,0);
+  const head=new THREE.Group(); head.position.set(0,1.32,0); g.add(head);
+  add(head,sph(.3,skin),0,.26,0);
+  add(head,T(new THREE.SphereGeometry(.335,24,16,0,6.283,0,1.9),0x2a2a2a),0,.3,-.02);
+  const hairB=new THREE.Group(); hairB.position.set(0,.5,-.18); head.add(hairB);
+  if(o.long) add(hairB,box(.66,.95,.22,0x2a2a2a),0,-.45,0);
+  const eyes=[],pupils=[];
+  [-.115,.115].forEach(x=>{ const e=sph(.075,0xffffff); e.scale.z=.5; add(head,e,x,.28,.26);
+    const pu=sph(.04,0x111111); pu.scale.z=.5; add(e,pu,0,0,.14); eyes.push(e); pupils.push(pu); });
+  const mouth=add(head,sph(.07,0x7a1f2b),0,.14,.27); mouth.scale.set(1,.12,.4);
+  const sm=T(new THREE.TorusGeometry(.07,.014,6,14,Math.PI),0x3a1a10,false); sm.rotation.z=Math.PI; sm.position.set(0,.2,.28); sm.visible=false; head.add(sm);
+  if(o.blush) [-.2,.2].forEach(x=>add(head,T(new THREE.CircleGeometry(.05,12),0xff8f8f,false),x,.18,.29));
+  if(o.glasses) [-.115,.115].forEach(x=>add(head,T(new THREE.TorusGeometry(.1,.012,8,20),0x222222,false),x,.28,.3));
+  [-.15,.15].forEach(x=>{ const th=cyl(.12,.11,.62,o.pants); th.rotation.x=1.5708; add(g,th,x,.58,.3);
+    add(g,cyl(.1,.09,.55,o.pants),x,.3,.6); add(g,box(.2,.1,.3,o.shoe||0xffffff),x,.05,.7); });
+  const arms=[-1,1].map(sd=>{ const sh=new THREE.Group(); sh.position.set(sd*.4,1.28,0); g.add(sh);
+    add(sh,cyl(.085,.075,.56,o.top),0,-.28,0); const el=new THREE.Group(); el.position.y=-.56; sh.add(el);
+    add(el,cyl(.075,.065,.5,o.top),0,-.25,0); const hand=add(el,sph(.085,skin),0,-.52,0); return {sh,el,hand}; });
+  g.userData={head,eyes,pupils,mouth,smile:sm,hairB,torso,arms}; return g; }
+
+/* ================= OFFICE (x ≈ 0) ================= */
+const office=new THREE.Group(); scene.add(office);
+add(office,box(16,.1,12,0x2f4543,false),0,-.05,0);
+const wallC=0x436461;
+add(office,box(6.7,4.5,.2,wallC,false),-3.15,2.25,-3); add(office,box(3.7,4.5,.2,wallC,false),4.65,2.25,-3);
+add(office,box(2.6,.9,.2,wallC,false),1.5,.45,-3); add(office,box(2.6,1.2,.2,wallC,false),1.5,3.9,-3);
+add(office,box(.12,2.4,.25,0x2a3a38),1.5,2.1,-3);
+const winSky=new THREE.Mesh(new THREE.PlaneGeometry(14,10),new THREE.MeshBasicMaterial({map:sky})); winSky.position.set(1.5,2.5,-12); office.add(winSky);
+add(office,box(3.2,.12,1.3,0x8a5a3a),-1.4,.95,0); [-2.8,.0].forEach(x=>add(office,box(.1,.9,1.2,0x2d3b3a),x,.48,0));
+const mon=add(office,box(.12,.75,.95,0xd8d0b8),-2.1,1.45,0); add(mon,new THREE.Mesh(new THREE.PlaneGeometry(.85,.62),new THREE.MeshBasicMaterial({color:0xcfe8f5})),.07,0,0).rotation.y=1.5708;
+add(office,box(.55,.06,.3,0xd8d0b8),-1.2,1.03,.1);
+add(office,box(.55,.06,.55,0x151a24),.55,.5,0); add(office,box(.1,.8,.55,0x151a24),.88,.9,0); add(office,cyl(.04,.04,.45,0x222),.55,.25,0);
+const worker=person({top:0xf4f4f4,pants:0x3d3d44,blush:false}); worker.position.set(.45,0,0); worker.rotation.y=-1.0; office.add(worker);
+[[3.2,.45,1.0,.9,.9,.7,0xc9a46a],[3.3,1.15,1.0,.8,.5,.6,0xd9b57d],[2.4,.5,.2,.8,1,.7,0x2a2d38]].forEach(([x,y,z,w,h,d,c])=>add(office,box(w,h,d,c),x,y,z));
+add(office,box(.9,.05,.7,0xe0a463),1.0,.03,1.9);
+const glow=add(office,new THREE.Mesh(new THREE.PlaneGeometry(1.9,.9),new THREE.MeshBasicMaterial({color:0xffa31a})),2.2,.02,1.3); glow.rotation.x=-1.5708; glow.visible=false;
+function portrait(){ const c=document.createElement('canvas'); c.width=c.height=128; const g=c.getContext('2d');
+  g.fillStyle='#51635f'; g.fillRect(0,0,128,128); g.fillStyle='#161616'; g.beginPath(); g.arc(64,56,36,0,7); g.fill(); g.fillRect(24,86,80,42);
+  g.fillStyle='#f3d2b8'; g.beginPath(); g.ellipse(64,62,26,30,0,0,7); g.fill(); g.fillStyle='#fff'; g.fillRect(44,72,40,9); g.fillStyle='#111'; g.fillRect(48,50,6,6); g.fillRect(74,50,6,6);
+  return new THREE.CanvasTexture(c); }
+add(office,box(1.1,1.3,.1,0xc9962e),-2.2,2.8,-2.88); add(office,new THREE.Mesh(new THREE.PlaneGeometry(.9,1.1),new THREE.MeshBasicMaterial({map:portrait()})),-2.2,2.8,-2.82);
+
+/* ================= SUNSET (x ≈ 30) ================= */
+const out=new THREE.Group(); out.position.x=30; scene.add(out);
+add(out,new THREE.Mesh(new THREE.PlaneGeometry(60,34),new THREE.MeshBasicMaterial({map:sky})),0,8,-16);
+add(out,box(60,.2,24,0x5a3a38,false),0,-.1,4);
+const tc=0xdcae82; add(out,box(8,.5,2,tc),0,.25,-6); add(out,box(6,1.2,1.8,tc),0,1.1,-6);
+[[-2.4,1.2],[2.4,1.2],[0,1.9]].forEach(([x,h])=>{ const c=T(new THREE.ConeGeometry(1.05,h*1.8,4),tc); c.rotation.y=.785; add(out,c,x,1.7+h*.9,-6); });
+add(out,box(3.2,.5,.7,0x6b4a3a),0,.25,0);
+const girl=person({top:0xd9202a,pants:0xb5b8c2,long:true,glasses:true,blush:true,shoe:0x1a1a1a}); girl.position.set(-.8,.0,0); girl.rotation.y=.15; out.add(girl);
+const boy=person({top:0xf8f8f8,pants:0xf8f8f8,blush:true}); boy.position.set(.8,0,0); boy.rotation.y=-.15; out.add(boy);
+
+/* ---------- glow sprites, rockets, bursts, sparklers ---------- */
+const glowTex=(()=>{const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d'),r=g.createRadialGradient(32,32,0,32,32,32);
+  r.addColorStop(0,'#fff');r.addColorStop(.3,'rgba(255,255,255,.5)');r.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=r;g.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);})();
+const AD=THREE.AdditiveBlending, cols=[0xffffff,0xff3b3b,0xffb347,0xfff2a8,0x9bff9b];
+const bursts=[], rockets=[]; let flash=0;
+function rocket(x,ty,z,col){ const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xffe9b0,blending:AD,transparent:true,depthWrite:false})); sp.scale.setScalar(.45); sp.position.set(x,ty-4.5,z); scene.add(sp); rockets.push({sp,ty,col}); }
+function burst(x,y,z,col){ const n=110,p=new Float32Array(n*3),v=[]; for(let i=0;i<n;i++){ p.set([x,y,z],i*3); const a=Math.random()*6.283,b=Math.acos(2*Math.random()-1),sp=2+Math.random()*2.6; v.push(Math.sin(b)*Math.cos(a)*sp,Math.sin(b)*Math.sin(a)*sp,Math.cos(b)*sp); }
+  const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  const pts=new THREE.Points(geo,new THREE.PointsMaterial({color:col,size:.5,map:glowTex,transparent:true,blending:AD,depthWrite:false})); scene.add(pts);
+  const fl=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:col,blending:AD,transparent:true,depthWrite:false})); fl.scale.setScalar(5); fl.position.set(x,y,z); scene.add(fl);
+  bursts.push({pts,v,fl,life:1.6}); flash=.7; }
+function stepFX(dt){
+  for(let i=rockets.length-1;i>=0;i--){ const r=rockets[i]; r.sp.position.y+=7*dt; if(r.sp.position.y>=r.ty){ burst(r.sp.position.x,r.ty,r.sp.position.z,r.col); scene.remove(r.sp); rockets.splice(i,1); } }
+  for(let i=bursts.length-1;i>=0;i--){ const b=bursts[i]; b.life-=dt; const pa=b.pts.geometry.attributes.position, a=pa.array;
+    for(let k=0;k<b.v.length/3;k++){ b.v[k*3]*=.97; b.v[k*3+1]=b.v[k*3+1]*.97-dt*1.3; b.v[k*3+2]*=.97; a[k*3]+=b.v[k*3]*dt; a[k*3+1]+=b.v[k*3+1]*dt; a[k*3+2]+=b.v[k*3+2]*dt; }
+    pa.needsUpdate=true; b.pts.material.opacity=Math.max(b.life/1.6,0); b.fl.material.opacity=Math.max(b.life-1.2,0)*2.2;
+    if(b.life<=0){ scene.remove(b.pts,b.fl); b.pts.geometry.dispose(); bursts.splice(i,1); } }
+  flash=Math.max(flash-dt*1.6,0); }
+function clearFX(){ bursts.splice(0).forEach(b=>scene.remove(b.pts,b.fl)); rockets.splice(0).forEach(r=>scene.remove(r.sp)); }
+function spark(hand){ const n=45,geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(n*3),3));
+  const pts=new THREE.Points(geo,new THREE.PointsMaterial({color:0xff5a3a,size:.22,map:glowTex,transparent:true,blending:AD,depthWrite:false})); pts.position.set(0,-.12,0); hand.add(pts);
+  const core=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xffffff,blending:AD,transparent:true,depthWrite:false})); core.scale.setScalar(.5); pts.add(core); return {pts,core}; }
+const sp=boy.userData.arms.map(a=>spark(a.hand));
+function stepSpark(on,t){ sp.forEach((s,j)=>{ const a=s.pts.geometry.attributes.position.array; for(let i=0;i<a.length;i+=3){ a[i]=(Math.random()-.5)*.5; a[i+1]=(Math.random()-.5)*.5; a[i+2]=(Math.random()-.5)*.35; }
+  s.pts.geometry.attributes.position.needsUpdate=true; s.pts.visible=on; s.core.scale.setScalar(.35+Math.random()*.35); }); }
+
+/* ---------- floating papers when the floor glows ---------- */
+const papers=[...Array(9)].map((_,i)=>{ const m=box(.34,.015,.44,i%2?0xe8d4a8:0xf4f0e0); m.visible=false; office.add(m); return m; });
+
+/* ---------- animation helpers ---------- */
+const dmp=(o,k,v,r=.12)=>{ o[k]+=(v-o[k])*r; };
+function arms(P,i,sx,ex,sz=0,ez=0){ const a=P.userData.arms[i]; dmp(a.sh.rotation,'x',sx); dmp(a.sh.rotation,'z',sz); dmp(a.el.rotation,'x',ex); dmp(a.el.rotation,'z',ez); }
+function face(P,f){ const u=P.userData, {open=0,eye=1,px=0,py=0,hx=0,hy=0,hz=0,lean=0}=f;
+  dmp(u.mouth.scale,'y',.12+open); u.eyes.forEach(e=>dmp(e.scale,'y',eye,.4)); u.pupils.forEach(q=>{ dmp(q.position,'x',px); dmp(q.position,'y',py); });
+  dmp(u.head.rotation,'x',hx); dmp(u.head.rotation,'y',hy); dmp(u.head.rotation,'z',hz); dmp(u.torso.rotation,'x',lean); dmp(u.head.position,'z',-lean*.5);
+  u.hairB.rotation.x=-u.head.rotation.x*.6+Math.sin(performance.now()/500)*.05; u.hairB.rotation.z=Math.sin(performance.now()/700)*.05; }
+
+function animate(t){
+  const bl=(t%3.3)<.12?.1:1, W=worker, G=girl, B=boy;
+  // ---- office worker: type → sigh → lean back, stare up → spot the glow
+  if(t<6){ [0,1].forEach(i=>arms(W,i,-.95,-.95+Math.sin(t*16+i*3)*.16)); face(W,{eye:bl,py:-.02,hx:.12}); }
+  else if(t<9){ arms(W,0,-.45,-1.15); arms(W,1,-.45,-1.15); face(W,{eye:bl,px:.025,py:.035,hx:.2+Math.max(0,Math.sin((t-6)*1.6))*.12}); }
+  else if(t<13){ arms(W,0,-.35,-1.2); arms(W,1,-.35,-1.2); face(W,{eye:bl,py:.04,hx:-.6,lean:-.28}); }
+  else { arms(W,0,-1,-.4,-.3); arms(W,1,-1,-.4,.3); face(W,{eye:1.35,py:-.03,hx:.3,hy:.5,open:.6}); }
+  W.position.y=Math.sin(t*1.6)*.01;
+  // ---- couple
+  const laugh=t>=19, sad=!laugh;
+  if(sad) { arms(B,0,-.2,0,-2.55,1.4+Math.sin(t*9)*.18); arms(B,1,-1.3,-.6,.3,0); face(B,{eye:.1,hx:.08,hz:-.06}); }
+  else { arms(B,0,-1.3+Math.sin(t*5)*.25,-.6,-.35,0); arms(B,1,-1.3+Math.sin(t*5+1.5)*.25,-.6,.35,0);
+         face(B,{open:1.1+Math.sin(t*14)*.35,eye:t<22?1:.15,px:t<22?Math.sin(t*3)*.03:0,hx:Math.sin(t*14)*.05,hz:Math.sin(t*3.5)*.08}); }
+  B.position.y=laugh?Math.abs(Math.sin(t*7))*.035:0;
+  arms(G,0,-.6,-1.15,.12); arms(G,1,-.6,-1.15,-.12);
+  G.userData.smile.visible=true; G.userData.mouth.visible=false;
+  const gl=t>=25; face(G,{eye:t<22?1:.15,hz:.07+Math.sin(t*1.3)*.05,hx:gl?Math.sin(t*10)*.04:.02,hy:t<22?-.25:0});
+  G.position.y=gl?Math.abs(Math.sin(t*6))*.02:0;
+  stepSpark(t>=16,t); sp.forEach(s=>s.core.material.opacity=.7+Math.random()*.3);
+  // ---- floor glow: pulse + papers rising
+  const pg=t>=12&&t<16; glow.visible=pg; glow.material.color.setHSL(.1,1,.5+.15*Math.sin(t*8)); glow.scale.set(1+(t-12)*.08,1+(t-12)*.08,1);
+  papers.forEach((m,i)=>{ m.visible=t>=13&&t<16; const k=(t-13-i*.12); if(k>0){ m.position.set(2.2+Math.sin(i*2+t)*.7,.1+k*1.1,1.3+Math.cos(i*3)*.4); m.rotation.set(t*2+i,t*1.6,i); } });
+}
+
+/* ---------- shot list ---------- */
+const SHOTS=[
+ {t:0,  s:0, c:[1.5,2.1,1.9],  l:[1.5,2.1,-3]},
+ {t:3,  s:0, c:[.6,1.3,4.2],   l:[-.3,1.1,0]},
+ {t:6,  s:0, c:[-.3,1.65,1.7], l:[.45,1.5,0], cap:'Kya isbaar bhi Diwali\naise hi kat jayega.....'},
+ {t:9,  s:0, c:[1,2,6.2],      l:[.2,1.3,0],  cap:'Akelepan Mai............?'},
+ {t:13, s:0, c:[2.9,1.8,4.4],  l:[2,.4,1.4]},
+ {t:16, s:1, c:[30.8,1.8,2.1], l:[30.8,1.65,0]},
+ {t:22, s:1, c:[29.2,1.75,2.1],l:[29.2,1.65,0], cap:'Ya Shayed...............'},
+ {t:25, s:1, c:[30,2,8],       l:[30,1.4,0]}];
+const ease=x=>x*x*(3-2*x), cur=new THREE.Vector3(), look=new THREE.Vector3(), tmp=new THREE.Vector3(), dir=new THREE.Vector3(), flashEl=document.getElementById('flash');
+let prev=0, last=performance.now(), nextFW=0, capKey=-1;
+
+function frame(now){
+  const dt=Math.min((now-last)/1000,.05); last=now; const t=aud.currentTime;
+  let i=SHOTS.length-1; while(SHOTS[i].t>t) i--;
+  const sh=SHOTS[i], pr=SHOTS[Math.max(i-1,0)], k=pr.s!==sh.s?1:ease(Math.min((t-sh.t)/1.1,1));
+  cur.set(...pr.c).lerp(tmp.set(...sh.c),k); look.set(...pr.l).lerp(tmp.set(...sh.l),k);
+  dir.copy(look).sub(cur).normalize(); cur.addScaledVector(dir,(t-sh.t)*.045);           // slow push-in
+  cur.x+=Math.sin(t*.9)*.04; cur.y+=Math.sin(t*1.3)*.025; cam.position.copy(cur); cam.lookAt(look); // handheld drift
+  scene.background=new THREE.Color(sh.s?0xe58a54:0x3a5552); office.visible=!sh.s; out.visible=!!sh.s;
+  if(t<prev) clearFX();
+  if(prev<16&&t>=16||(prev>t&&t<16)){ flashEl.style.transition='none'; flashEl.style.opacity=1; requestAnimationFrame(()=>{flashEl.style.transition='opacity .9s';flashEl.style.opacity=0;}); }
+  prev=t;
+  if(t>=nextFW||t<nextFW-3){ nextFW=t+(sh.s?(t>24?.55:1.5):.95);
+    if(!sh.s||t>22||t<18){ const x=sh.s?30+(Math.random()-.5)*14:.5+Math.random()*3.4, ty=sh.s?5.5+Math.random()*4:2.4+Math.random()*2; rocket(x,ty,sh.s?-12:-10,cols[(Math.random()*cols.length)|0]); } }
+  stepFX(dt); animate(t); ambient.intensity=.75+(sh.s?0:flash*.5);
+  if(sh.cap&&capKey!==i){ capKey=i; capEl.innerHTML=sh.cap.split('\n').map(l=>l.split(' ').map((w,j)=>`<span style="animation-delay:${j*.2}s">${w}</span>`).join(' ')).join('<br>'); }
+  else if(!sh.cap&&capKey!==-1){ capKey=-1; capEl.innerHTML=''; }
+  R.render(scene,cam); requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+document.getElementById('go').onclick=async()=>{ document.getElementById('start').remove(); aud.currentTime=0; try{await aud.play();}catch(e){console.error(e);} };
+addEventListener('keydown',e=>{ if(e.code==='Space'){ e.preventDefault(); aud.paused?aud.play():aud.pause(); } });
+</script>
+</body>
+</html>

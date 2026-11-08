@@ -1,0 +1,88 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation for User Profile
+    function isValidUserProfile(data, userId) {
+      return data.uid == userId
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100))
+        && (!('email' in data) || (data.email is string && data.email.size() <= 150))
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500))
+        && data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    // Validation for Saved Rangoli
+    function isValidRangoli(data, userId) {
+      return data.userId == userId
+        && data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 100
+        && data.symmetry is number && data.symmetry >= 4 && data.symmetry <= 16
+        && (!('color' in data) || (data.color is string && data.color.size() <= 20))
+        && (!('elementsJson' in data) || (data.elementsJson is string && data.elementsJson.size() <= 50000))
+        && (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 50000))
+        && data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    // Validation for Saved E-Card
+    function isValidECard(data, userId) {
+      return data.userId == userId
+        && data.id is string && data.id.size() <= 128
+        && data.recipient is string && data.recipient.size() <= 100
+        && data.sender is string && data.sender.size() <= 100
+        && data.message is string && data.message.size() <= 1000
+        && data.theme is string && data.theme.size() <= 50
+        && (!('previewUrl' in data) || (data.previewUrl is string && data.previewUrl.size() <= 50000))
+        && data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    // User Profile Document
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming(), userId);
+      allow update: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming(), userId);
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // Rangoli Subcollection
+      match /rangolis/{rangoliId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(rangoliId) && isValidRangoli(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(rangoliId) && isValidRangoli(incoming(), userId);
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(rangoliId);
+      }
+
+      // E-Card Subcollection
+      match /ecards/{ecardId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(ecardId) && isValidECard(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(ecardId) && isValidECard(incoming(), userId);
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(ecardId);
+      }
+    }
+  }
+}

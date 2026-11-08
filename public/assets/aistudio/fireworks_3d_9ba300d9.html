@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Happy Diwali – 3D Fireworks Show</title>
+<style>
+  html,body{margin:0;height:100%;background:#02030a;overflow:hidden;font-family:system-ui,sans-serif}
+  canvas{display:block}
+  #start{position:fixed;inset:0;z-index:5;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:#02030aee;color:#ffd9a0}
+  #start button{font:600 1.1rem system-ui;padding:14px 30px;border:0;border-radius:999px;background:#ff9933;color:#2a1000;cursor:pointer}
+  #start button:focus-visible{outline:3px solid #fff;outline-offset:3px}
+</style>
+</head>
+<body>
+<audio id="aud" src="audio.m4a" loop preload="auto"></audio>
+<div id="start"><p>Diwali fireworks · 3D · sound on</p><button id="go">Start the show</button></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const aud=document.getElementById('aud');
+const R=new THREE.WebGLRenderer({antialias:true}); R.setPixelRatio(Math.min(devicePixelRatio,2)); document.body.appendChild(R.domElement);
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x03050f); scene.fog=new THREE.FogExp2(0x070b1e,.007);
+const cam=new THREE.PerspectiveCamera(55,1,.1,200);
+addEventListener('resize',()=>{R.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();}); dispatchEvent(new Event('resize'));
+const D=45, hh=()=>Math.tan(55*Math.PI/360)*D, hw=()=>hh()*cam.aspect, Wp=(nx,ny)=>new THREE.Vector3(nx*hw(),ny*hh(),-D);
+const AD=THREE.AdditiveBlending, rnd=(()=>{let s=7;return()=>(s=(s*16807)%2147483647)/2147483647;})();
+
+/* ---------- glow sprite texture ---------- */
+const glowTex=(()=>{const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d'),r=g.createRadialGradient(32,32,0,32,32,32);
+  r.addColorStop(0,'#fff');r.addColorStop(.25,'rgba(255,255,255,.55)');r.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=r;g.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);})();
+const glow=(x,y,z,s,col,op=1)=>{const m=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:col,blending:AD,transparent:true,depthWrite:false,opacity:op,fog:false}));m.position.set(x,y,z);m.scale.setScalar(s);scene.add(m);return m;};
+
+/* ---------- golden city ---------- */
+const city=new THREE.Group(); scene.add(city);
+function facadeTex(){const c=document.createElement('canvas');c.width=128;c.height=256;const g=c.getContext('2d');
+  const gr=g.createLinearGradient(0,0,0,256);gr.addColorStop(0,'#ffcf6e');gr.addColorStop(1,'#d9822b');g.fillStyle=gr;g.fillRect(0,0,128,256);
+  for(let y=24;y<240;y+=52)for(let x=10;x<128;x+=40){g.fillStyle='#7a3a12';g.beginPath();g.moveTo(x,y+34);g.lineTo(x,y+12);g.arc(x+10,y+12,10,Math.PI,0);g.lineTo(x+20,y+34);g.fill();g.fillStyle='#ffe9a8';g.fillRect(x+3,y+16,14,16);}
+  g.fillStyle='#fff3b0';for(let x=2;x<128;x+=8){g.fillRect(x,4,3,3);g.fillRect(x,130,3,3);} 
+  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;}
+const fm=new THREE.MeshBasicMaterial({map:facadeTex()}), gold=new THREE.MeshBasicMaterial({color:0xe9a23b}), glass=new THREE.MeshBasicMaterial({color:0x7f9bb8});
+function building(x,z,w,h,dome,mat=fm){const m=mat.clone(); if(m.map){m.map=m.map.clone();m.map.needsUpdate=true;m.map.repeat.set(Math.max(1,w/5),Math.max(1,h/9));}
+  const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,w*.8),m); b.position.set(x,-10+h/2,z); city.add(b);
+  if(dome){const d=new THREE.Mesh(new THREE.SphereGeometry(w*.38,20,10,0,6.283,0,1.5708),gold);d.position.set(x,-10+h,z);city.add(d);
+    const f=new THREE.Mesh(new THREE.ConeGeometry(.25,w*.5,6),gold);f.position.set(x,-10+h+w*.38+w*.2,z);city.add(f);}}
+building(-12,-24,9,14,true); building(-6.5,-30,6,9,true); building(-1,-34,7,7,true); building(5,-32,7,9,true); building(11,-26,6,17,false,glass);
+building(15,-34,8,11,true); building(-17,-34,8,8,true); building(1,-26,4,6,true);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,120),new THREE.MeshBasicMaterial({color:0x2a1408})); ground.rotation.x=-1.5708; ground.position.set(0,-10,-40); city.add(ground);
+glow(0,-9,-30,70,0xff8a2a,.28);
+
+/* ---------- crowd (instanced) with raised arms + diyas ---------- */
+function crowd(n,z,y,sc,black){const body=new THREE.InstancedMesh(new THREE.CylinderGeometry(.34,.42,1.7,10),new THREE.MeshBasicMaterial({color:0xffffff}),n),
+  head=new THREE.InstancedMesh(new THREE.SphereGeometry(.3,10,8),new THREE.MeshBasicMaterial({color:black?0x050505:0xc98a5e}),n),
+  arm=new THREE.InstancedMesh(new THREE.CylinderGeometry(.09,.09,1.2,6),new THREE.MeshBasicMaterial({color:black?0x050505:0xc98a5e}),n*2), o=new THREE.Object3D(), pal=[0xe8332f,0xf3a21d,0x1fa3a0,0x3b7bd8,0xe65a9b,0xf6d23a,0x7a3fb5];
+  for(let i=0;i<n;i++){const x=(i/(n-1)-.5)*30*sc+(rnd()-.5)*.8, s=sc*(.85+rnd()*.3), by=y+(rnd()-.5)*.5;
+    o.position.set(x,by,z); o.scale.setScalar(s); o.rotation.set(0,0,0); o.updateMatrix(); body.setMatrixAt(i,o.matrix); body.setColorAt(i,new THREE.Color(black?0x050505:pal[(rnd()*pal.length)|0]));
+    o.position.set(x,by+1.15*s,z); o.updateMatrix(); head.setMatrixAt(i,o.matrix);
+    [-1,1].forEach((sd,k)=>{o.position.set(x+sd*(.55+rnd()*.3)*s,by+(rnd()<.5?1.3:.9)*s,z); o.rotation.z=-sd*(.25+rnd()*.5); o.updateMatrix(); arm.setMatrixAt(i*2+k,o.matrix);});}
+  [body,head,arm].forEach(m=>city.add(m)); if(!black) for(let i=0;i<n;i+=4) glow(((i/(n-1))-.5)*30*sc,y-.9,z+1.5,1.4*sc,0xff9a2a,.8);}
+crowd(70,-12,-9,1,false); crowd(46,-6,-5.2,1,true);
+// diyas along the street
+for(let i=0;i<14;i++) glow((i-6.5)*2.1,-8.2,-14,1.6,0xff9a2a,.9);
+
+/* ---------- particle pool: every spark in the show ---------- */
+const N=9000,pos=new Float32Array(N*3),vel=new Float32Array(N*3),life=new Float32Array(N),ml=new Float32Array(N),col=new Float32Array(N*3),drag=new Float32Array(N),grav=new Float32Array(N);let head=0;
+function emit(x,y,z,vx,vy,vz,l,c,d=.955,g=6){const i=head;head=(head+1)%N;pos.set([x,y,z],i*3);vel.set([vx,vy,vz],i*3);life[i]=ml[i]=l;col.set(c,i*3);drag[i]=d;grav[i]=g;}
+const gp=new Float32Array(N*9),gc=new Float32Array(N*9),geo=new THREE.BufferGeometry();
+geo.setAttribute('position',new THREE.BufferAttribute(gp,3));geo.setAttribute('color',new THREE.BufferAttribute(gc,3));
+const pts=new THREE.Points(geo,new THREE.PointsMaterial({size:.8,map:glowTex,vertexColors:true,transparent:true,blending:AD,depthWrite:false,fog:false}));pts.frustumCulled=false;scene.add(pts);
+function stepPool(dt,t){
+  for(let i=0;i<N;i++){const o=i*3,q=i*9;
+    if(life[i]<=0){if(gc[q]||gc[q+1]||gc[q+2])gc.fill(0,q,q+9);continue;}
+    life[i]-=dt;const d=Math.pow(drag[i],dt*60);
+    vel[o]*=d;vel[o+1]=vel[o+1]*d-grav[i]*dt;vel[o+2]*=d;pos[o]+=vel[o]*dt;pos[o+1]+=vel[o+1]*dt;pos[o+2]+=vel[o+2]*dt;
+    const f=Math.max(life[i]/ml[i],0),a=Math.min(1,f*2.2)*(f<.4?.6+.4*Math.sin(t*38+i*1.7):1);
+    for(let L=0;L<3;L++){const s=[0,.035,.085][L],b=[1,.55,.25][L]*a,k=q+L*3;
+      gp[k]=pos[o]-vel[o]*s;gp[k+1]=pos[o+1]-vel[o+1]*s;gp[k+2]=pos[o+2]-vel[o+2]*s;gc[k]=col[o]*b;gc[k+1]=col[o+1]*b;gc[k+2]=col[o+2]*b;}}
+  geo.attributes.position.needsUpdate=geo.attributes.color.needsUpdate=true;}
+
+/* ---------- show choreography (same timeline as the video) ---------- */
+const PAL={purple:[[.7,.5,1],[1,.7,1]],orange:[[1,.55,.2],[1,.8,.4]],red:[[1,.25,.2],[1,.6,.4]],blue:[[.3,.6,1],[.7,.9,1]],teal:[[.2,.9,.9],[.6,1,.9]],
+  pink:[[1,.5,.6],[1,.8,.7]],gold:[[1,.72,.28],[1,.9,.6],[1,.55,.15]],white:[[1,1,1],[.9,.9,1]]};
+const flashes=[],rockets=[],fountains=[];
+function burst(nx,ny,r,pal,n){const c=Wp(nx,ny),H=hh();
+  for(let i=0;i<n;i++){const a=rnd()*6.283,b=Math.acos(2*rnd()-1),s=H*r*2.6*(rnd()<.8?.92+.08*rnd():.3+.5*rnd());
+    emit(c.x,c.y,c.z,Math.sin(b)*Math.cos(a)*s,Math.sin(b)*Math.sin(a)*s,Math.cos(b)*s*.5,1.7+rnd()*1.3,pal[i%pal.length],.955,H*.33);}
+  flashes.push({s:glow(c.x,c.y,c.z,H*r*3,new THREE.Color(...pal[0])),t:0});}
+const SHOW=[];
+function B(t,nx,ny,r,p,n){SHOW.push({t:t-.7,run:()=>rockets.push({t0:performance.now(),x0:nx*.7,x1:nx,y1:ny})},{t,run:()=>burst(nx,ny,r,PAL[p],n)});}
+function F(t0,t1,nx){SHOW.push({t:t0,run:()=>fountains.push({t0:t0,t1,nx})});}
+B(.8,-.55,.5,.12,'purple',60);B(1.0,-.4,.55,.28,'orange',260);B(1.15,0,.62,.3,'purple',280);B(1.25,.38,.5,.28,'orange',260);B(1.35,-.2,.8,.12,'white',50);B(1.45,.22,.82,.12,'white',50);
+B(2.2,-.35,.65,.34,'red',320);B(2.35,.3,.7,.38,'blue',340);B(2.5,0,.45,.22,'red',200);B(2.65,.5,.4,.2,'blue',180);
+B(3.2,-.45,.65,.38,'red',340);B(3.35,.4,.65,.36,'teal',320);B(3.55,.05,.4,.25,'pink',220);
+B(4.3,-.25,.35,.5,'gold',520);B(4.5,.2,.75,.4,'teal',300);
+B(5.1,0,.38,.75,'gold',800);B(6.1,0,.3,.85,'gold',800);
+F(1.0,2.5,0);F(2.2,3.7,.05);F(3.1,4.6,-.1);
+let rainT=[6.9,8.2];
+
+/* ---------- "Happy Diwali" built from particles ---------- */
+const TARGET=[]; (()=>{const c=document.createElement('canvas');c.width=900;c.height=420;const g=c.getContext('2d');g.fillStyle='#fff';g.textAlign='center';
+  g.font='italic 700 150px Georgia,serif';g.fillText('Happy',450,170);g.font='700 230px Georgia,serif';g.fillText('Diwali',450,370);
+  const d=g.getImageData(0,0,900,420).data;for(let y=0;y<420;y+=4)for(let x=0;x<900;x+=4)if(d[(y*900+x)*4+3]>128)TARGET.push([x-450,-(y-210)]);})();
+const TN=TARGET.length,tp=new Float32Array(TN*3),tc=new Float32Array(TN*3),delay=Float32Array.from({length:TN},()=>rnd()*.4);
+const tg=new THREE.BufferGeometry();tg.setAttribute('position',new THREE.BufferAttribute(tp,3));tg.setAttribute('color',new THREE.BufferAttribute(tc,3));
+const text=new THREE.Points(tg,new THREE.PointsMaterial({size:.75,map:glowTex,vertexColors:true,transparent:true,blending:AD,depthWrite:false,fog:false}));text.frustumCulled=false;text.visible=false;scene.add(text);
+const textGlow=glow(0,0,-D-1,1,0xffb84a,0); const T0=5.2;
+const ease=x=>{x=Math.min(Math.max(x,0),1);return x*x*(3-2*x);};
+function stepText(t){text.visible=t>=T0;textGlow.material.opacity=t>=T0?Math.min((t-T0)*.35,.4):0; if(t<T0)return;
+  const c0=Wp(0,.38),c1=Wp(0,.05),k=hw()*1.5/900;textGlow.position.set(c1.x,c1.y,-D-1);textGlow.scale.set(hw()*2.3,hh()*.9,1);
+  for(let i=0;i<TN;i++){const e=ease((t-T0-delay[i])/1.1),o=i*3,x=c1.x+TARGET[i][0]*k,y=c1.y+TARGET[i][1]*k,br=e*(.75+.25*Math.sin(t*7+i));
+    tp[o]=c0.x+(x-c0.x)*e+(1-e)*Math.sin(i)*.4;tp[o+1]=c0.y+(y-c0.y)*e;tp[o+2]=-D;tc[o]=1*br;tc[o+1]=.78*br;tc[o+2]=.38*br;}
+  tg.attributes.position.needsUpdate=tg.attributes.color.needsUpdate=true;}
+
+/* ---------- main loop ---------- */
+let idx=0,prev=0,last=performance.now();
+SHOW.sort((a,b)=>a.t-b.t);
+function clearAll(){life.fill(0);rockets.length=fountains.length=0;flashes.splice(0).forEach(f=>scene.remove(f.s));idx=0;}
+function frame(now){
+  const dt=Math.min((now-last)/1000,.05);last=now;const t=aud.currentTime;
+  if(t<prev-.5)clearAll();prev=t;
+  while(idx<SHOW.length&&SHOW[idx].t<=t)SHOW[idx++].run();
+  const H=hh(),playing=!aud.paused||t===0;
+  if(playing){
+    for(let i=rockets.length-1;i>=0;i--){const r=rockets[i],k=(performance.now()-r.t0)/700;if(k>=1){rockets.splice(i,1);continue;}
+      const p=Wp(r.x0+(r.x1-r.x0)*k,-.55+(r.y1+.55)*Math.sin(k*1.5708));for(let j=0;j<3;j++)emit(p.x,p.y,p.z,(rnd()-.5)*2,-H*.3*rnd(),0,.5,[1,.85,.55],.95,2);}
+    fountains.forEach(f=>{if(t>f.t0&&t<f.t1){const b=Wp(f.nx,-.52);for(let j=0;j<16;j++){const a=(rnd()-.5)*.55;emit(b.x,b.y,b.z,Math.sin(a)*H*1.1,H*(1.1+rnd()*.9),0,1.3+rnd()*.5,[1,.92,.78],.99,H*1.5);}}});
+    if(t>rainT[0]&&t<rainT[1])for(let j=0;j<18;j++){const p=Wp((rnd()-.5)*2,.95);emit(p.x,p.y,p.z,0,-H*.25,0,2.4,[1,.75,.3],.99,H*.25);}
+    stepPool(dt,t);
+    for(let i=flashes.length-1;i>=0;i--){const f=flashes[i];f.t+=dt;f.s.material.opacity=Math.max(1-f.t/.45,0);if(f.t>.45){scene.remove(f.s);flashes.splice(i,1);}}
+  }
+  stepText(t);
+  const tilt=ease((t-3.9)/.9)*.22*H;city.position.y=-tilt;                       // camera tilts up: city drops
+  cam.position.set(Math.sin(t*.7)*.25,Math.sin(t*1.1)*.12,0);cam.lookAt(cam.position.x*.5,0,-D);
+  R.render(scene,cam);requestAnimationFrame(frame);}
+requestAnimationFrame(frame);
+document.getElementById('go').onclick=async()=>{document.getElementById('start').remove();aud.currentTime=0;clearAll();try{await aud.play();}catch(e){console.error(e);}};
+addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();aud.paused?aud.play():aud.pause();}});
+</script>
+</body>
+</html>

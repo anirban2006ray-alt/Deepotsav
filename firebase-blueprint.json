@@ -1,0 +1,66 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile information storing authentication details and preferences.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 150 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "maxLength": 40 },
+        "updatedAt": { "type": "string", "maxLength": 40 }
+      },
+      "required": ["uid", "createdAt"]
+    },
+    "SavedRangoli": {
+      "title": "SavedRangoli",
+      "description": "Personalized rangoli design created in Rangoli Studio and saved to user profile.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 100 },
+        "symmetry": { "type": "number" },
+        "color": { "type": "string", "maxLength": 20 },
+        "elementsJson": { "type": "string", "maxLength": 50000 },
+        "thumbnailUrl": { "type": "string", "maxLength": 50000 },
+        "createdAt": { "type": "string", "maxLength": 40 },
+        "updatedAt": { "type": "string", "maxLength": 40 }
+      },
+      "required": ["id", "userId", "title", "symmetry", "createdAt"]
+    },
+    "SavedECard": {
+      "title": "SavedECard",
+      "description": "Personalized Diwali festive greeting e-card saved to user profile.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "recipient": { "type": "string", "maxLength": 100 },
+        "sender": { "type": "string", "maxLength": 100 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "theme": { "type": "string", "maxLength": 50 },
+        "previewUrl": { "type": "string", "maxLength": 50000 },
+        "createdAt": { "type": "string", "maxLength": 40 },
+        "updatedAt": { "type": "string", "maxLength": 40 }
+      },
+      "required": ["id", "userId", "recipient", "sender", "message", "theme", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores user personal profile document keyed by auth uid."
+    },
+    "/users/{userId}/rangolis/{rangoliId}": {
+      "schema": "SavedRangoli",
+      "description": "Stores user saved custom rangoli designs in subcollection."
+    },
+    "/users/{userId}/ecards/{ecardId}": {
+      "schema": "SavedECard",
+      "description": "Stores user saved Diwali e-cards in subcollection."
+    }
+  }
+}
